@@ -1,16 +1,13 @@
 """MongoDB connection and small account repository helpers."""
 import os
-from datetime import datetime, timezone
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo import ASCENDING
-from models.documents import GmailAccount
+from models.gmail_account import GmailAccount
+from utils.time import utcnow
 
 _client = None
 _db = None
 
-
-def utcnow():
-    return datetime.now(timezone.utc)
 
 
 async def connect_to_db():
@@ -61,22 +58,3 @@ async def migrate_legacy_account_arrays():
                     "created_at": utcnow(), "updated_at": utcnow(),
                 }}, upsert=True,
             )
-
-
-async def find_gmail_account(email: str):
-    return await get_collection("gmail_accounts").find_one({"email": email.lower()})
-
-
-async def save_gmail_account(telegram_id: int, email: str, credentials):
-    """Upsert one independent account per mailbox (not an array per user)."""
-    now = utcnow()
-    document = GmailAccount(
-        telegram_id=telegram_id, email=email.lower(), access_token=credentials.token,
-        refresh_token=credentials.refresh_token,
-        token_expiry=credentials.expiry.isoformat() if credentials.expiry else None,
-        updated_at=now,
-    ).model_dump(exclude_none=True)
-    await get_collection("gmail_accounts").update_one(
-        {"email": email.lower()}, {"$set": document, "$setOnInsert": {"created_at": now}}, upsert=True
-    )
-    return await find_gmail_account(email)

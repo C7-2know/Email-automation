@@ -9,6 +9,8 @@ from db.mongo import close_db, connect_to_db
 from gmail.pubsub import renew_expiring_watches
 from routes.gmail import router as gmail_router
 from routes.system import router as system_router
+from telegram_bot.app import create_telegram_application
+from db.redis import connect_redis, close_redis
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -29,11 +31,18 @@ async def lifespan(app: FastAPI):
     await connect_to_db()
     telegram_app = None
     if os.getenv("TELEGRAM_BOT_TOKEN"):
-        from telegram_bot.app import create_telegram_application
         telegram_app = create_telegram_application()
         await telegram_app.initialize()
         await telegram_app.start()
         await telegram_app.updater.start_polling()
+        print("Telegram connected successfully!")
+
+    await connect_redis()
+    try:
+        print("Redis connected successfully!")
+        yield
+    finally: 
+        await close_redis()
     renewal_task = asyncio.create_task(watch_renewal_loop())
     yield
     renewal_task.cancel()
