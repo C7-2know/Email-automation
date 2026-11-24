@@ -3,16 +3,27 @@ from db.mongo import get_collection
 from gmail.auth import get_auth_url
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
-from models.documents import TelegramUser
+from models.telegram_user import TelegramUser
+from repositories.users import UserRepository
+
+user_repository = UserRepository()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    document = TelegramUser(telegram_id=user.id, name=user.full_name).model_dump(exclude_none=True)
-    await get_collection("users").update_one({"telegram_id": user.id}, {"$set": {"name": user.full_name}, "$setOnInsert": document}, upsert=True)
+    await user_repository.upsert_user(telegram_id=user.id, name=user.full_name or user.first_name)
     await update.message.reply_text("Welcome!\n/connect — add Gmail\n/accounts — view connected accounts\n/disconnect — remove an account")
 
 async def connect_gmail(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"Connect Gmail:\n{get_auth_url(update.effective_user.id)}")
+    auth_url =  await get_auth_url(update.effective_user.id)
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "Connect Google Account",
+                url=auth_url
+            )
+        ]
+    ])
+    await update.message.reply_text( "Click below to connect your Gmail account:", reply_markup=keyboard)
 
 async def list_accounts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     accounts = [a async for a in get_collection("gmail_accounts").find({"telegram_id": update.effective_user.id})]
