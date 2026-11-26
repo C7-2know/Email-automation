@@ -3,7 +3,7 @@ import base64
 import html
 import re
 from email.utils import parseaddr
-from models.email import GmailMessage
+from models.gmail_message import GmailMessage
 
 def _decode(data):
     try:

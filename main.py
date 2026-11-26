@@ -28,29 +28,47 @@ async def watch_renewal_loop():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await connect_to_db()
     telegram_app = None
-    if os.getenv("TELEGRAM_BOT_TOKEN"):
-        telegram_app = create_telegram_application()
-        await telegram_app.initialize()
-        await telegram_app.start()
-        await telegram_app.updater.start_polling()
-        print("Telegram connected successfully!")
+    renewal_task = None
 
+    await connect_to_db()
     await connect_redis()
+
     try:
-        print("Redis connected successfully!")
+        logger.info("MongoDB connected successfully")
+        logger.info("Redis connected successfully")
+
+        if os.getenv("TELEGRAM_BOT_TOKEN"):
+            telegram_app = create_telegram_application()
+            await telegram_app.initialize()
+            await telegram_app.start()
+            await telegram_app.updater.start_polling()
+            logger.info("Telegram connected successfully!")
+        renewal_task = asyncio.create_task(watch_renewal_loop())
+        
         yield
+        
     finally: 
+        logger.info("Application shutdown started")
+        if renewal_task:
+            renewal_task.cancel()
+            try:
+                await renewal_task
+            except asyncio.CancelledError:
+                pass
+
+        if telegram_app:
+            if telegram_app.updater.running:
+                await telegram_app.updater.stop()
+
+            await telegram_app.stop()
+            await telegram_app.shutdown()
+            logger.info("Telegram bot stopped")
+
         await close_redis()
-    renewal_task = asyncio.create_task(watch_renewal_loop())
-    yield
-    renewal_task.cancel()
-    if telegram_app:
-        await telegram_app.updater.stop()
-        await telegram_app.stop()
-        await telegram_app.shutdown()
-    await close_db()
+        await close_db()
+
+        logger.info("Application shutdown completed")
 
 
 app = FastAPI(title=os.getenv("PROJECT_NAME", "Email Manager Agent"), lifespan=lifespan)
